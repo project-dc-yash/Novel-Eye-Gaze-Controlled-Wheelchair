@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Fixed Eye Tracking with Motor Notification</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+
+    h1 {
+      margin-bottom: 20px;
+    }
+
+    .video-wrapper {
+      position: relative;
+      width: 640px;
+      height: 480px;
+      margin-bottom: 20px;
+    }
+
+    video, canvas {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border-radius: 10px;
+    }
+
+    .status-panel {
+      display: flex;
+      gap: 20px;
+      font-size: 20px;
+    }
+
+    .status-box {
+      background-color: #222;
+      padding: 15px 25px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+    }
+
+    .green { color: #00ff00; }
+    .yellow { color: #ffff00; }
+    .red { color: #ff4444; }
+  </style>
+</head>
+<body>
+
+  <h1>🔍 Improved Eye Tracking with Motor Notification</h1>
+  
+  <div class="video-wrapper">
+    <video id="video" autoplay muted playsinline></video>
+    <canvas id="overlay"></canvas>
+  </div>
+
+  <div class="status-panel">
+    <div class="status-box">
+      Gaze Direction: <span id="gazeDirection" class="yellow">Detecting...</span>
+    </div>
+    <div class="status-box">
+      Motor Status: <span id="motorStatus" class="yellow">Waiting...</span>
+    </div>
+  </div>
+
+  <script>
+    const videoElement = document.getElementById('video');
+    const canvasElement = document.getElementById('overlay');
+    const canvasCtx = canvasElement.getContext('2d');
+
+    const gazeText = document.getElementById('gazeDirection');
+    const motorText = document.getElementById('motorStatus');
+
+    const faceMesh = new FaceMesh({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
+    });
+
+    faceMesh.setOptions({
+      maxNumFaces: 1,
+      refineLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+
+    faceMesh.onResults(results => {
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+      canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+      if (results.multiFaceLandmarks.length > 0) {
+        const landmarks = results.multiFaceLandmarks[0];
+
+        const leftIris = landmarks[468];  // Left eye center
+        const rightIris = landmarks[473]; // Right eye center
+        const nose = landmarks[1];        // Nose center
+
+        const canvasWidth = canvasElement.width;
+        const leftX = leftIris.x * canvasWidth;
+        const rightX = rightIris.x * canvasWidth;
+        const noseX = nose.x * canvasWidth;
+
+        const eyeAvgX = (leftX + rightX) / 2;
+        const deltaX = eyeAvgX - noseX;
+
+        // Draw boxes on eyes
+        [[leftX, leftIris.y], [rightX, rightIris.y]].forEach(([x, y]) => {
+          const drawX = x;
+          const drawY = y * canvasElement.height;
+          canvasCtx.beginPath();
+          canvasCtx.rect(drawX - 8, drawY - 8, 16, 16);
+          canvasCtx.strokeStyle = '#00ff00';
+          canvasCtx.lineWidth = 2;
+          canvasCtx.stroke();
+        });
+
+        // Adjusted threshold logic
+        if (deltaX < -12) {
+          gazeText.innerText = "Looking Left";
+          gazeText.className = "green";
+          motorText.innerText = "Left Motor Activated";
+          motorText.className = "green";
+        } else if (deltaX > 12) {
+          gazeText.innerText = "Looking Right";
+          gazeText.className = "red";
+          motorText.innerText = "Right Motor Activated";
+          motorText.className = "red";
+        } else {
+          gazeText.innerText = "Looking Center";
+          gazeText.className = "yellow";
+          motorText.innerText = "Motors Stopped";
+          motorText.className = "yellow";
+        }
+      }
+    });
+
+    const camera = new Camera(videoElement, {
+      onFrame: async () => {
+        await faceMesh.send({ image: videoElement });
+      },
+      width: 640,
+      height: 480
+    });
+
+    camera.start();
+  </script>
+
+</body>
+</html>
